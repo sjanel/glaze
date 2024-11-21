@@ -117,7 +117,7 @@ namespace glz
             }
          }
       };
-      
+
       // CSV spec: https://www.ietf.org/rfc/rfc4180.txt
       // Quotes are escaped via double quotes
 
@@ -151,42 +151,33 @@ namespace glz
                         // Escaped quote
                         value.push_back('"');
                         ++it;
-                     } else {
+                     }
+                     else {
                         // Closing quote
                         break;
                      }
-                  } else {
+                  }
+                  else {
                      value.push_back(*it);
                      ++it;
                   }
                }
                // After closing quote, expect comma, newline, or end of input
-               if (it != end) {
-                  if (*it == ',') {
-                     ++it; // Skip the comma
-                  } else if (*it == '\n') {
-                     // End of record, do nothing
-                  } else if (it == end) {
-                     // End of input
-                  } else {
-                     // Invalid character after closing quote
-                     ctx.error = error_code::syntax_error;
-                     return;
-                  }
+               if (it != end && *it != ',' && *it == '\n') {
+                  // Invalid character after closing quote
+                  ctx.error = error_code::syntax_error;
+                  return;
                }
-            } else {
+            }
+            else {
                // Unquoted field
                while (it != end && *it != ',' && *it != '\n') {
                   value.push_back(*it);
                   ++it;
                }
-               if (it != end && *it == ',') {
-                  ++it; // Skip the comma
-               }
             }
          }
       };
-
 
       template <bool_t T>
       struct from<CSV, T>
@@ -220,8 +211,7 @@ namespace glz
       template <char delim>
       inline void goto_delim(auto&& it, auto&& end) noexcept
       {
-         while (++it != end && *it != delim)
-            ;
+         while (++it != end && *it != delim);
       }
 
       inline auto read_column_wise_keys(auto&& ctx, auto&& it, auto&& end)
@@ -469,87 +459,89 @@ namespace glz
                      decode_hash_with_size<CSV, T, HashInfo, HashInfo.type>::op(key.data(), end, key.size());
 
                   if (index < N) [[likely]] {
-                     visit<N>([&]<size_t I>() {
-                        decltype(auto) member = [&]() -> decltype(auto) {
-                           if constexpr (reflectable<T>) {
-                              return get_member(value, get<I>(to_tuple(value)));
+                     visit<N>(
+                        [&]<size_t I>() {
+                           decltype(auto) member = [&]() -> decltype(auto) {
+                              if constexpr (reflectable<T>) {
+                                 return get_member(value, get<I>(to_tuple(value)));
+                              }
+                              else {
+                                 return get_member(value, get<I>(reflect<T>::values));
+                              }
+                           }();
+
+                           using M = std::decay_t<decltype(member)>;
+                           if constexpr (fixed_array_value_t<M> && emplace_backable<M>) {
+                              size_t col = 0;
+                              while (it != end) {
+                                 if (col < member.size()) [[likely]] {
+                                    read<CSV>::op<Opts>(member[col][csv_index], ctx, it, end);
+                                 }
+                                 else [[unlikely]] {
+                                    read<CSV>::op<Opts>(member.emplace_back()[csv_index], ctx, it, end);
+                                 }
+
+                                 if (*it == '\r') {
+                                    ++it;
+                                    if (*it == '\n') {
+                                       ++it;
+                                       break;
+                                    }
+                                    else [[unlikely]] {
+                                       ctx.error = error_code::syntax_error;
+                                       return;
+                                    }
+                                 }
+                                 else if (*it == '\n') {
+                                    ++it;
+                                    break;
+                                 }
+                                 else if (it == end) {
+                                    return;
+                                 }
+
+                                 if (*it == ',') [[likely]] {
+                                    ++it;
+                                 }
+                                 else [[unlikely]] {
+                                    ctx.error = error_code::syntax_error;
+                                    return;
+                                 }
+
+                                 ++col;
+                              }
                            }
                            else {
-                              return get_member(value, get<I>(reflect<T>::values));
-                           }
-                        }();
+                              while (it != end) {
+                                 read<CSV>::op<Opts>(member, ctx, it, end);
 
-                        using M = std::decay_t<decltype(member)>;
-                        if constexpr (fixed_array_value_t<M> && emplace_backable<M>) {
-                           size_t col = 0;
-                           while (it != end) {
-                              if (col < member.size()) [[likely]] {
-                                 read<CSV>::op<Opts>(member[col][csv_index], ctx, it, end);
-                              }
-                              else [[unlikely]] {
-                                 read<CSV>::op<Opts>(member.emplace_back()[csv_index], ctx, it, end);
-                              }
-
-                              if (*it == '\r') {
-                                 ++it;
-                                 if (*it == '\n') {
+                                 if (*it == '\r') {
+                                    ++it;
+                                    if (*it == '\n') {
+                                       ++it;
+                                       break;
+                                    }
+                                    else [[unlikely]] {
+                                       ctx.error = error_code::syntax_error;
+                                       return;
+                                    }
+                                 }
+                                 else if (*it == '\n') {
                                     ++it;
                                     break;
+                                 }
+
+                                 if (*it == ',') [[likely]] {
+                                    ++it;
                                  }
                                  else [[unlikely]] {
                                     ctx.error = error_code::syntax_error;
                                     return;
                                  }
                               }
-                              else if (*it == '\n') {
-                                 ++it;
-                                 break;
-                              }
-                              else if (it == end) {
-                                 return;
-                              }
-
-                              if (*it == ',') [[likely]] {
-                                 ++it;
-                              }
-                              else [[unlikely]] {
-                                 ctx.error = error_code::syntax_error;
-                                 return;
-                              }
-
-                              ++col;
                            }
-                        }
-                        else {
-                           while (it != end) {
-                              read<CSV>::op<Opts>(member, ctx, it, end);
-
-                              if (*it == '\r') {
-                                 ++it;
-                                 if (*it == '\n') {
-                                    ++it;
-                                    break;
-                                 }
-                                 else [[unlikely]] {
-                                    ctx.error = error_code::syntax_error;
-                                    return;
-                                 }
-                              }
-                              else if (*it == '\n') {
-                                 ++it;
-                                 break;
-                              }
-
-                              if (*it == ',') [[likely]] {
-                                 ++it;
-                              }
-                              else [[unlikely]] {
-                                 ctx.error = error_code::syntax_error;
-                                 return;
-                              }
-                           }
-                        }
-                     }, index);
+                        },
+                        index);
 
                      if (bool(ctx.error)) [[unlikely]] {
                         return;
