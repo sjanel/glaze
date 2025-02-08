@@ -1,5 +1,7 @@
+#include <cstdint>
 #include <deque>
 #include <map>
+#include <string_view>
 #include <unordered_map>
 
 #include "glaze/glaze.hpp"
@@ -844,5 +846,23 @@ suite hash_tests = [] {
       expect(obj.aaaaaabc == 3);
    };
 };
+/*
+enum class ReflectableEnum : int8_t { value1, value2, value3 };
 
+template <>
+struct glz::meta<ReflectableEnum>
+{
+   using enum ::ReflectableEnum;
+   static constexpr auto value = enumerate(value1, value2, value3);
+};
+
+suite reflectable_enum_test = [] {
+   "reflectable_enum"_test = [] {
+      expect(std::size(glz::reflect<ReflectableEnum>::keys) == 3U);
+      expect(glz::reflect<ReflectableEnum>::keys[0] == "value1");
+      expect(glz::reflect<ReflectableEnum>::keys[1] == "value2");
+      expect(glz::reflect<ReflectableEnum>::keys[2] == "value3");
+   };
+};
+*/
 int main() { return 0; }
